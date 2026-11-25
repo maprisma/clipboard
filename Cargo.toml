@@ -1,0 +1,34 @@
+[package]
+name = "maprisma-clipboard"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Fast, local Wayland clipboard manager with bar icon, image previews, color swatches and pinning"
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+libc = "0.2"
+png = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["process", "io-util", "time", "macros", "rt", "rt-multi-thread", "sync"] }
+wl-clipboard-rs = "0.9"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+
+[[bin]]
+name = "maprisma-clipboard"
+path = "src/main.rs"
+
+[[bin]]
+name = "maprisma-clipboard-tray"
+path = "src/tray/main.rs"
+
+[dependencies.libcosmic]
+git = "https://github.com/maprisma/libcosmic"
+rev = "40d534c5d5a463cc473e0c9f01ad2da068b11bcd"
+default-features = false
+features = ["applet", "applet-token", "dbus-config", "multi-window", "tokio", "wayland", "winit"]
+
+[profile.release]
+lto = "thin"
