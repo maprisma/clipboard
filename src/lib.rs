@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub const APP_NAME: &str = "Maprisma Clipboard";
+pub mod skin;
 pub const APP_ID: &str = "io.github.ubruckhaus.CosmicMaprismaClipboard";
 pub const WINDOW_APP_ID: &str = "io.github.ubruckhaus.CosmicMaprismaClipboard.Window";
 pub const ICON: &str = "io.github.ubruckhaus.CosmicMaprismaClipboard-symbolic";
