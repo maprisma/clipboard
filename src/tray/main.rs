@@ -1,6 +1,6 @@
 //! KDE / Hyprland StatusNotifierItem bar icon + background Wayland clipboard watcher.
 mod model;
-mod present;
+use maprisma_kit::present;
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 

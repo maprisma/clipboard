@@ -18,8 +18,8 @@ pub struct SkinStyle {
 }
 
 impl SkinStyle {
-    pub fn palette(&self) -> crate::look::Palette {
-        crate::look::Palette {
+    pub fn palette(&self) -> maprisma_kit::look::Palette {
+        maprisma_kit::look::Palette {
             accent: Some(self.accent_rgb),
             background: Some(self.window_bg),
             foreground: Some(self.foreground),
@@ -177,7 +177,7 @@ mod tests {
             assert_eq!(st.border_width, width);
             assert_eq!(
                 st.palette(),
-                crate::look::Palette {
+                maprisma_kit::look::Palette {
                     accent: Some(accent),
                     background: Some(window),
                     foreground: Some(fg),

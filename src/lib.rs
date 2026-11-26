@@ -144,8 +144,5 @@ pub fn load_prefs() -> AppPrefs {
 }
 
 pub mod clipboard;
-pub mod corners;
 pub mod i18n;
-pub mod look;
-pub mod shot;
 pub mod store;

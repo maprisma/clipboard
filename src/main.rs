@@ -1,5 +1,4 @@
 mod drag;
-mod window_size;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,9 +23,10 @@ use maprisma_clipboard::store::{
 };
 use maprisma_clipboard::{
     APP_ID, APP_NAME, AppPrefs, CLOSE_WINDOW, HISTORY_LIMITS, TRAY_BUS, WINDOW_APP_ID, WINDOW_BUS, WindowControl,
-    clipboard, corners, data_dir, load_prefs, look, shot,
+    clipboard, data_dir, load_prefs,
     skin::{SKIN_KEY, SKINS, normalize_skin, skin_label, skin_style},
 };
+use maprisma_kit::{AppInfo, corners, look, shot, window_size};
 use serde_json::Value;
 
 static AUTOSIZE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-autosize"));
@@ -34,9 +34,9 @@ static AUTOSIZE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-autosize"
 // the undo banner appeared above it, and the text input panicked in layout ("Downcast on
 // stateless state"), which closed the window on every delete. A fixed unique id still focuses.
 static SEARCH_ID: LazyLock<Id> = LazyLock::new(Id::unique);
-static NOTE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-shot-note"));
+static NOTE_ID: LazyLock<Id> = LazyLock::new(Id::unique);
 
-const SHOT_FOLDER: &str = APP_NAME;
+const SHOT_APP: AppInfo = AppInfo::new(APP_ID, APP_NAME);
 const POPUP_WIDTH: f32 = 460.0;
 const POPUP_HEIGHT: f32 = 700.0;
 const POPUP_MAX_HEIGHT: f32 = 760.0;
@@ -784,7 +784,7 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
     fn shutdown(&mut self) -> Task<Message> {
         self.save_size(true);
         if let shot::Phase::Note { path, text, .. } = std::mem::take(&mut self.shot) {
-            let _ = shot::save_note(&path, SHOT_FOLDER, &text);
+            let _ = shot::save_note_for(&SHOT_APP, &path, &text);
         }
         cosmic::iced::exit()
     }
@@ -824,7 +824,7 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
                 if keep && shot::note_text(&text).is_some() {
                     self.shot = shot::Phase::Noting;
                     return off_thread(
-                        move || shot::save_note(&path, SHOT_FOLDER, &text).map(|_| ()).map_err(|e| e.to_string()),
+                        move || shot::save_note_for(&SHOT_APP, &path, &text).map(|_| ()).map_err(|e| e.to_string()),
                         Message::NoteSaved,
                     );
                 }
@@ -864,38 +864,23 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
     // ------------------------------------------------------------------ views
 
     fn shot_overlay(&self) -> Option<Element<'_, Message>> {
-        let body: Element<Message> = match &self.shot {
-            shot::Phase::Note { shown, text: note, .. } => column![
-                text::heading(tr("Screenshot saved")),
-                dim(trf("Saved as {0}", &[shown.clone()])),
-                text_input(tr("What is wrong? (optional)"), note.as_str())
-                    .id(NOTE_ID.clone())
-                    .on_input(Message::NoteInput)
-                    .on_submit(|_| Message::NoteDone),
-                row![
-                    space::horizontal().width(Length::Fill),
-                    button::suggested(tr("Done")).on_press(Message::NoteDone),
-                ],
-            ]
-            .spacing(12)
-            .into(),
-            shot::Phase::Error(reason) => column![
-                text::body(reason.clone()),
-                row![
-                    space::horizontal().width(Length::Fill),
-                    button::suggested(tr("Done")).on_press(Message::NoteDone),
-                ],
-            ]
-            .spacing(12)
-            .into(),
-            _ => return None,
+        let labels = shot::ShotLabels {
+            saved_heading: tr("Screenshot saved"),
+            saved_as_template: tr("Saved as {0}"),
+            note_placeholder: tr("What is wrong? (optional)"),
+            done_button: tr("Done"),
+            save_error_template: tr("The screenshot could not be saved: {0}"),
+            note_error_template: tr("The note could not be saved: {0}"),
         };
-        let card = container(body).padding(16).width(Length::Fill).class(theme::Container::Card);
-        Some(
-            container(card)
-                .padding(12)
-                .width(if self.window_mode { Length::Fill } else { Length::Fixed(POPUP_WIDTH) })
-                .into(),
+        let width = if self.window_mode { Length::Fill } else { Length::Fixed(POPUP_WIDTH) };
+        shot::note_overlay(
+            &self.shot,
+            NOTE_ID.clone(),
+            &labels,
+            theme::Container::Card,
+            width,
+            Message::NoteInput,
+            Message::NoteDone,
         )
     }
 
@@ -2075,7 +2060,7 @@ impl<const WINDOW_MODE: bool> cosmic::Application for Panel<WINDOW_MODE> {
                 }
                 let (width, height) = (picture.size.width, picture.size.height);
                 return off_thread(
-                    move || shot::save_screenshot(SHOT_FOLDER, &picture.rgba, width, height),
+                    move || shot::save_screenshot_for(&SHOT_APP, &picture.rgba, width, height),
                     Message::ShotSaved,
                 );
             }
