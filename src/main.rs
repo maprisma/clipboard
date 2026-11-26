@@ -1,3 +1,4 @@
+mod drag;
 mod window_size;
 
 use std::collections::HashMap;
@@ -29,7 +30,10 @@ use maprisma_clipboard::{
 use serde_json::Value;
 
 static AUTOSIZE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-autosize"));
-static SEARCH_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-search"));
+// Not a named `Id::new(..)`: libcosmic's named-state handover lost the search field's state when
+// the undo banner appeared above it, and the text input panicked in layout ("Downcast on
+// stateless state"), which closed the window on every delete. A fixed unique id still focuses.
+static SEARCH_ID: LazyLock<Id> = LazyLock::new(Id::unique);
 static NOTE_ID: LazyLock<Id> = LazyLock::new(|| Id::new("clipboard-shot-note"));
 
 const SHOT_FOLDER: &str = APP_NAME;
@@ -43,6 +47,8 @@ const GLYPH_PAUSED: &[u8] = include_bytes!("../data/icons/clipboard-paused-symbo
 const GLYPH_PIN: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M9.8 1.8a1 1 0 0 1 1.4 0l3 3a1 1 0 0 1-.2 1.6l-2.3 1.2-1.1 3.3a1 1 0 0 1-1.6.4L6.6 8.9 2.7 12.8a.75.75 0 1 1-1.06-1.06l3.9-3.9-2.4-2.4a1 1 0 0 1 .4-1.6l3.3-1.1 1.2-2.3a1 1 0 0 1 .2-.2z"/></svg>"#;
 const GLYPH_COPY: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M5 2a2 2 0 0 0-2 2v7h1.5V4a.5.5 0 0 1 .5-.5h6V2H5zm3 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H8zm0 1.5h4a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-.5.5H8a.5.5 0 0 1-.5-.5V7a.5.5 0 0 1 .5-.5z"/></svg>"#;
 const GLYPH_TRASH: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M6 2a1 1 0 0 0-1 1H2.5v1.5h11V3H11a1 1 0 0 0-1-1H6zM3.5 5.5l.7 8a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-8H11l-.6 7.5a.4.4 0 0 1-.4.4H6a.4.4 0 0 1-.4-.4L5 5.5H3.5z"/></svg>"#;
+/// Clear all history: the trash can with a cross on it (pinned clips go too).
+const GLYPH_CLEAR_ALL: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M6 2a1 1 0 0 0-1 1H2.5v1.5h11V3H11a1 1 0 0 0-1-1H6zM3.5 5.5l.7 8a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-8H11l-.6 7.5a.4.4 0 0 1-.4.4H6a.4.4 0 0 1-.4-.4L5 5.5H3.5z"/><path fill="currentColor" d="M5.9 7.1l.9-.9L8 7.4l1.2-1.2.9.9L8.9 8.3l1.2 1.2-.9.9L8 9.2l-1.2 1.2-.9-.9 1.2-1.2z"/></svg>"#;
 const GLYPH_PAUSE: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M4 2.5h2.75v11H4v-11zm5.25 0H12v11H9.25v-11z"/></svg>"#;
 const GLYPH_PLAY: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M4.2 2.4a.8.8 0 0 1 1.2-.68l8.2 5.6a.8.8 0 0 1 0 1.36l-8.2 5.6A.8.8 0 0 1 4.2 13.6V2.4z"/></svg>"#;
 const GLYPH_LINK: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="currentColor" d="M6.8 11.2a3.2 3.2 0 0 1 0-4.53l1.7-1.7a3.2 3.2 0 0 1 4.53 4.53l-1.1 1.1-1.06-1.06 1.1-1.1a1.7 1.7 0 0 0-2.4-2.4l-1.7 1.7a1.7 1.7 0 0 0 0 2.4l.4.4-1.06 1.06-.41-.4z"/><path fill="currentColor" d="M9.2 4.8a3.2 3.2 0 0 1 0 4.53l-1.7 1.7a3.2 3.2 0 1 1-4.53-4.53l1.1-1.1 1.06 1.06-1.1 1.1a1.7 1.7 0 1 0 2.4 2.4l1.7-1.7a1.7 1.7 0 0 0 0-2.4l-.4-.4 1.06-1.06.41.4z"/></svg>"#;
@@ -576,6 +582,9 @@ struct Panel<const WINDOW_MODE: bool = false> {
     shot: shot::Phase,
     capturing: bool,
     resize: window_size::Debounce,
+    /// Window ticks since the place was last asked for, and the place last saved (Hyprland).
+    position_ticks: u8,
+    saved_position: Option<window_size::Position>,
 }
 
 #[derive(Debug, Clone)]
@@ -791,10 +800,22 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
         if let Some(size) = size {
             self.setting_error = i18n::write_pref(window_size::KEY, Some(window_size::to_value(size))).is_err();
         }
-        if closing && let Some(position) = window_size::current_position() {
-            self.setting_error |=
-                i18n::write_pref(window_size::POSITION_KEY, Some(window_size::position_value(position))).is_err();
+        if closing {
+            self.save_position();
         }
+    }
+
+    /// Where the user moved the window to (Hyprland; a no-op elsewhere), written only when it
+    /// changed. Asked when the window closes and every couple of seconds while it is open, so a
+    /// move is kept even when the window is not closed normally.
+    fn save_position(&mut self) {
+        let Some(position) = window_size::current_position() else { return };
+        if self.saved_position == Some(position) {
+            return;
+        }
+        self.saved_position = Some(position);
+        self.setting_error |=
+            i18n::write_pref(window_size::POSITION_KEY, Some(window_size::position_value(position))).is_err();
     }
 
     fn finish_note(&mut self, keep: bool) -> Task<Message> {
@@ -917,6 +938,15 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
             cosmic::widget::tooltip::Position::Bottom,
         );
 
+        let clear_all_btn = tip(
+            button::custom(svg_glyph(GLYPH_CLEAR_ALL, 16.0, 0.9, false))
+                .padding(6)
+                .class(theme::Button::Icon)
+                .on_press_maybe((!self.store.items.is_empty()).then_some(Message::AskClear(ConfirmClear::All))),
+            tr("Clear all history"),
+            cosmic::widget::tooltip::Position::Bottom,
+        );
+
         let settings_btn = tip(
             button::icon(icon::from_name("emblem-system-symbolic").symbolic(true))
                 .on_press(Message::ToggleSettings),
@@ -935,6 +965,7 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
             space::horizontal().width(Length::Fill),
             pause_btn,
             clear_btn,
+            clear_all_btn,
             settings_btn,
         ]
         .spacing(8)
@@ -1214,6 +1245,17 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
         .class(theme::Button::MenuItem)
         .on_press(Message::SelectClip(id));
 
+        // Drag the card out to another app (terminal, editor, file manager): the clip's text,
+        // or for an image its picture and its file. Clicks still reach the button inside.
+        let drag_entry = entry.clone();
+        let dir = self.dir.clone();
+        let left_area = cosmic::widget::dnd_source::<Message, drag::DragData>(left_area)
+            .action(cosmic::iced::clipboard::dnd::DndAction::Copy)
+            .drag_content(move || match drag_entry.image_path(&dir) {
+                Some(path) => drag::DragData::image(&path),
+                None => drag::DragData::Text(drag_entry.text.clone()),
+            });
+
         let full_row = row![left_area, pin_btn, copy_btn, del_btn]
             .spacing(2)
             .align_y(Alignment::Center);
@@ -1338,17 +1380,15 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
             }
         };
 
+        // Pin, Copy and Delete are symbols on the clip's card already; here only what the card
+        // has not got (Open URL, copy as plain text) and the "Copied" note.
         let id = entry.id.clone();
         let mut actions = row![].spacing(6).align_y(Alignment::Center);
-
-        actions = actions.push(
-            button::standard(tr(if entry.pinned { "Unpin" } else { "Pin" }))
-                .padding([5, 10])
-                .on_press(Message::TogglePin(id.clone())),
-        );
+        let mut has_actions = false;
 
         match &entry.kind {
             ClipKind::Link => {
+                has_actions = true;
                 actions = actions.push(
                     button::standard(tr("Open URL"))
                         .padding([5, 10])
@@ -1356,6 +1396,7 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
                 );
             }
             ClipKind::Text | ClipKind::Code if entry.lines > 1 => {
+                has_actions = true;
                 actions = actions.push(
                     button::standard(tr("Plain text"))
                         .padding([5, 10])
@@ -1365,26 +1406,17 @@ impl<const WINDOW_MODE: bool> Panel<WINDOW_MODE> {
             _ => {}
         }
 
-        actions = actions.push(
-            button::destructive(tr("Delete"))
-                .padding([5, 10])
-                .on_press(Message::DeleteClip(id.clone())),
-        );
+        let copied = self.copied_toast_until.is_some_and(|t| Instant::now() < t);
+        if copied {
+            actions = actions.push(space::horizontal().width(Length::Fill));
+            actions = actions.push(dim(tr("Copied")));
+        }
 
-        actions = actions.push(space::horizontal().width(Length::Fill));
-
-        let copy_label = if self.copied_toast_until.is_some_and(|t| Instant::now() < t) {
-            tr("Copied")
+        let card = if has_actions || copied {
+            column![body, divider::horizontal::default(), actions].spacing(10)
         } else {
-            tr("Copy")
+            column![body].spacing(10)
         };
-        actions = actions.push(
-            button::suggested(copy_label)
-                .padding([5, 14])
-                .on_press(Message::CopyClip(id, false)),
-        );
-
-        let card = column![body, divider::horizontal::default(), actions].spacing(10);
         Some(container(card).padding(12).width(Length::Fill).class(inspector_box(&self.skin)).into())
     }
 
@@ -1628,10 +1660,8 @@ impl<const WINDOW_MODE: bool> cosmic::Application for Panel<WINDOW_MODE> {
 
         if flags.window_mode {
             app.resize = window_size::Debounce::new(window_start_size());
-            window_size::restore_position(
-                window_size::parse_position(i18n::read_pref(window_size::POSITION_KEY).as_ref()),
-                window_start_size(),
-            );
+            app.saved_position = window_size::parse_position(i18n::read_pref(window_size::POSITION_KEY).as_ref());
+            window_size::restore_position(app.saved_position, window_start_size());
         }
         corners::set_current(&app.corners);
         app.rebuild_cached_theme();
@@ -2015,6 +2045,12 @@ impl<const WINDOW_MODE: bool> cosmic::Application for Panel<WINDOW_MODE> {
                 }
                 if self.resize.waiting() {
                     self.save_size(false);
+                }
+                // Every 2 s (8 × 250 ms); the first ask waits until the restore has moved the window.
+                self.position_ticks = self.position_ticks.saturating_add(1);
+                if self.position_ticks >= 8 {
+                    self.position_ticks = 0;
+                    self.save_position();
                 }
                 if look::refresh() {
                     self.rebuild_cached_theme();

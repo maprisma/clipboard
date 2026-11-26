@@ -18,6 +18,8 @@ Fast, local, privacy-first **Wayland clipboard manager** in pure Rust (`libcosmi
 - **Pinning & SHA-256 deduplication** — pinned clips stay on top, survive *Clear unpinned*, and are never pruned by the history limit. Re-copying moves existing clips to the top without duplicates.
 - **Privacy by default** — stored locally with `0600` permissions in `~/.local/share/maprisma-clipboard/`, ignores password manager secrets (`x-kde-passwordManagerHint` / `application/x-keepassxc-secret`), and supports one-click **Pause / Resume** from the header or tray icon.
 - **Keyboard-first workflow** — instant search focus, `↑`/`↓` navigation, `Enter` copy, `Shift+Enter` copy plain single-line text, `Ctrl+1`..`Ctrl+9` quick copy, `Ctrl+P` pin, `Delete` remove with 5-second **Undo**, `Esc` close, `F12` private screenshot.
+- **Drag & drop out** — drag a clip's card into a terminal, editor or file manager: text clips drop as plain text, images as the picture or its file.
+- **Clean cards** — pin, copy and delete live on each card; the header has *Clear unpinned* and *Clear all history* symbols, and the window remembers its size and (on Hyprland) its position as soon as you resize or move it.
 - **First-run `cliphist` import** — automatically imports up to 50 recent entries from `cliphist` when starting fresh.
 - **Desktop-native look & 8 languages** — follows your COSMIC, KDE, or Hyprland/Maprisma Theme colors, fonts, text scale, and corner radius, with built-in English, Deutsch, Français, Español, Italiano, Português, Nederlands, and Polski.
 
